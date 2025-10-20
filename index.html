@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>다이콥틱 헬릭스 — 거리 호흡 + 중간 영상 레이어(MP4)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  #ui{position:fixed;left:12px;top:12px;background:rgba(0,0,0,.55);padding:10px 12px;border-radius:12px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.08);max-width:720px;z-index:10}
+  #ui h3{margin:.2rem 0 .4rem;font-size:15px}
+  #ui .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #ui label{font-size:13px}
+  #ui input[type="color"]{width:48px;height:28px;border:none;background:none}
+  .section{border-top:1px dashed rgba(255,255,255,.15);margin-top:8px;padding-top:8px}
+  .preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  button,select,input{font:inherit}
+  #diag{font-size:12px;color:#ffd18a;margin-top:6px;white-space:pre-line}
+  .ghost{opacity:.5;pointer-events:none}
+  .muted{opacity:.55}
+  .small{font-size:12px}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="row"><strong>헬릭스 다이콥틱 (좌=파란 / 우=핑크) — 가닥 형태 선택 가능</strong></div>
+
+  <h3>가닥 형태</h3>
+  <div class="row">
+    <label>형태</label>
+    <select id="strandShape">
+      <option value="tube" selected>튜브(매끈한 선)</option>
+      <option value="sphere">스피어(구 비드)</option>
+      <option value="cube">큐브(정육면체 비드)</option>
+      <option value="ring">링(토러스 비드)</option>
+    </select>
+    <label style="margin-left:8px">비드 개수</label>
+    <input id="beadCount" type="range" min="60" max="1600" step="20" value="600">
+    <span id="beadCountVal">600</span>
+  </div>
+
+  <h3>전경(다이콥틱) — 좌안 파란 / 우안 핑크</h3>
+  <div class="row">
+    <label>좌안 색</label><input id="leftColor" type="color" value="#00d1ff">
+    <label style="margin-left:8px">우안 색</label><input id="rightColor" type="color" value="#ff4dd2">
+  </div>
+  <div class="row">
+    <label>좌 두께/크기</label><input id="leftThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="leftThickVal">0.012</span>
+    <label style="margin-left:8px">우 두께/크기</label><input id="rightThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="rightThickVal">0.012</span>
+  </div>
+
+  <div class="row">
+    <label>상승 속도 L</label><input id="lRise" type="range" min="0" max="3" step="0.01" value="1.0">
+    <label>상승 속도 R</label><input id="rRise" type="range" min="0" max="3" step="0.01" value="1.0">
+    <label>회전 밀도(턴)</label><input id="turns" type="range" min="1" max="12" step="0.1" value="6.0"><span id="turnsVal">6.0</span>
+    <label>반경</label><input id="radius" type="range" min="0.3" max="1.2" step="0.01" value="0.45"><span id="radiusVal">0.45</span>
+  </div>
+
+  <div class="section">
+    <div class="row"><strong>템포럴 모듈레이션(깜빡임/펄스) — 기존 로직</strong></div>
+    <div class="row">
+      <label><input type="checkbox" id="modL" checked> 왼눈 적용</label>
+      <label><input type="checkbox" id="modR" checked> 오른눈 적용</label>
+      <label>모드</label>
+      <select id="modMode">
+        <option value="blink">온/오프 깜빡임</option>
+        <option value="pulse" selected>명암+대비 펄스</option>
+      </select>
+      <label>주파수</label><input id="modFreq" type="range" min="0" max="15" step="0.1" value="2"><span id="modFreqVal">2.0 Hz</span>
+      <label>듀티</label><input id="modDuty" type="range" min="5" max="95" step="1" value="50"><span id="modDutyVal">50%</span>
+    </div>
+    <div class="row">
+      <label>펄스 강도</label><input id="pulseStrength" type="range" min="0.5" max="2.0" step="0.05" value="1.3"><span id="pulseStrengthVal">1.30×</span>
+      <label><input type="checkbox" id="phaseLink" checked> 위상 연동</label>
+      <label>위상 오프셋</label><input id="phaseOffset" type="range" min="0" max="180" step="1" value="180"><span id="phaseOffsetVal">180°</span>
+    </div>
+    <div class="row">
+      <label>개별 위상 L</label><input id="phaseL" type="range" min="0" max="360" step="1" value="0"><span id="phaseLVal">0°</span>
+      <label>개별 위상 R</label><input id="phaseR" type="range" min="0" max="360" step="1" value="180"><span id="phaseRVal">180°</span>
+    </div>
+  </div>
+
+  <!-- 새 섹션 A: 원근(거리 호흡) - 확장: 독립/동기화 -->
+  <div class="section">
+    <div class="row"><strong>원근(거리 호흡)</strong></div>
+    <div class="row">
+      <button id="depthBreathBtn">거리 호흡: OFF</button>
+      <label style="margin-left:8px"><input type="checkbox" id="depthIndependent"> 독립 조정 (좌/우 개별)</label>
+      <label style="margin-left:8px">동기(공통) 범위</label><input id="breathDist" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistVal">1.50 m</span>
+      <label style="margin-left:8px">동기 속도</label><input id="breathSpeed" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedVal">0.25 Hz</span>
+    </div>
+    <div class="row small muted" style="margin-top:6px">
+      <div style="min-width:440px">독립 조정 사용 시 아래 좌/우 범위와 속도로 각각 루프됩니다. (공통 모드에서는 기존 동작 유지)</div>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label>좌 범위</label><input id="breathDistL" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistLVal">1.50 m</span>
+      <label style="margin-left:8px">좌 속도</label><input id="breathSpeedL" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedLVal">0.25 Hz</span>
+      <label style="margin-left:8px">우 범위</label><input id="breathDistR" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistRVal">1.50 m</span>
+      <label style="margin-left:8px">우 속도</label><input id="breathSpeedR" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedRVal">0.25 Hz</span>
+    </div>
+  </div>
+
+  <!-- 새 섹션 B: 중간 영상 레이어(MP4) -->
+  <div class="section">
+    <div class="row"><strong>중간 영상 레이어 (노/초 파동배경과 헬릭스 사이, z ≈ -1.7)</strong></div>
+    <div class="row">
+      <input id="videoFile" type="file" accept="video/mp4" />
+      <button id="videoPlay" class="ghost" disabled>재생</button>
+      <button id="videoPause" class="ghost" disabled>일시정지</button>
+      <label><input type="checkbox" id="videoLoop" checked> 루프</label>
+      <label><input type="checkbox" id="videoMute" checked> 음소거</label>
+      <label>크기</label><input id="videoScale" type="range" min="0.6" max="2.5" step="0.05" value="1.0"><span id="videoScaleVal">1.00×</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="row" style="gap:6px">
+      <button id="enter">VR 시작</button>
+      <button id="rebuild">형태/두께 적용</button>
+      <button id="recenter">재배치</button>
+    </div>
+  </div>
+
+  <div id="diag"></div>
+</div>
+
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
+
+const diag = document.getElementById('diag'); const log=(m)=>{diag.textContent=m;};
+
+/* ---------- WebXR 기본 ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 50);
+camera.position.set(0,1.4,1.6);
+scene.add(new THREE.HemisphereLight(0xffffff,0x222233,0.9));
+scene.add(new THREE.DirectionalLight(0xffffff,0.6));
+
+addEventListener('resize', ()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- 배경: 노/초 파동 ---------- */
+const planeGeo=new THREE.PlaneGeometry(6.5,6.5);
+const planeMat=new THREE.ShaderMaterial({
+  uniforms:{uTime:{value:0},uWarp:{value:1.0},uSpeed:{value:1.1},uDensity:{value:60.0}},
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    precision highp float; varying vec2 vUv;
+    uniform float uTime,uWarp,uSpeed,uDensity;
+    vec3 Y=vec3(1.0,0.92,0.1); vec3 G=vec3(0.2,0.86,0.2);
+    void main(){
+      vec2 p=vUv; float r=length(p); float a=atan(p.y,p.x); float t=uTime*uSpeed;
+      float w=uDensity;
+      float rings1=sin((r+uWarp*0.25*sin(4.0*a+t*0.9))*w - t*6.0);
+      float rings2=sin((r+uWarp*0.30*cos(3.0*a-t*1.1))*(w*0.9) - t*5.0);
+      float m=0.5+0.5*(0.6*rings1+0.4*rings2);
+      vec3 col=mix(Y,G,smoothstep(0.2,0.8,m));
+      col*=0.85+0.15*cos(6.2831*r+t);
+      gl_FragColor=vec4(col,1.0);
+    }`
+});
+const bgPlane=new THREE.Mesh(planeGeo,planeMat);
+bgPlane.position.set(0,1.6,-2.0); scene.add(bgPlane);
+
+/* ---------- 전경 다이콥틱 그룹 ---------- */
+const leftGroup = new THREE.Group();   // 레이어1
+const rightGroup= new THREE.Group();   // 레이어2
+scene.add(leftGroup, rightGroup);
+
+/* ---------- UI 참조 ---------- */
+const strandShape = document.getElementById('strandShape');
+const beadCount   = document.getElementById('beadCount');
+const beadCountVal= document.getElementById('beadCountVal');
+const leftColor   = document.getElementById('leftColor');
+const rightColor  = document.getElementById('rightColor');
+const leftThick   = document.getElementById('leftThick');
+const rightThick  = document.getElementById('rightThick');
+const lRise = document.getElementById('lRise');
+const rRise = document.getElementById('rRise');
+const turns = document.getElementById('turns');
+const radius= document.getElementById('radius');
+const turnsVal=document.getElementById('turnsVal');
+const radiusVal=document.getElementById('radiusVal');
+
+const modL=document.getElementById('modL');
+const modR=document.getElementById('modR');
+const modMode=document.getElementById('modMode');
+const modFreq=document.getElementById('modFreq');
+const modDuty=document.getElementById('modDuty');
+const modFreqVal=document.getElementById('modFreqVal');
+const modDutyVal=document.getElementById('modDutyVal');
+const pulseStrength=document.getElementById('pulseStrength');
+const pulseStrengthVal=document.getElementById('pulseStrengthVal');
+const phaseLink=document.getElementById('phaseLink');
+const phaseOffset=document.getElementById('phaseOffset');
+const phaseOffsetVal=document.getElementById('phaseOffsetVal');
+const phaseL=document.getElementById('phaseL');
+const phaseR=document.getElementById('phaseR');
+const phaseLVal=document.getElementById('phaseLVal');
+const phaseRVal=document.getElementById('phaseRVal');
+
+const enterBtn=document.getElementById('enter');
+const rebuildBtn=document.getElementById('rebuild');
+const recenterBtn=document.getElementById('recenter');
+
+// 거리 호흡 UI
+const depthBreathBtn = document.getElementById('depthBreathBtn');
+const depthIndependent = document.getElementById('depthIndependent');
+const breathDist = document.getElementById('breathDist');
+const breathDistVal = document.getElementById('breathDistVal');
+const breathSpeed = document.getElementById('breathSpeed');
+const breathSpeedVal = document.getElementById('breathSpeedVal');
+
+const breathDistL = document.getElementById('breathDistL');
+const breathDistLVal = document.getElementById('breathDistLVal');
+const breathSpeedL = document.getElementById('breathSpeedL');
+const breathSpeedLVal = document.getElementById('breathSpeedLVal');
+
+const breathDistR = document.getElementById('breathDistR');
+const breathDistRVal = document.getElementById('breathDistRVal');
+const breathSpeedR = document.getElementById('breathSpeedR');
+const breathSpeedRVal = document.getElementById('breathSpeedRVal');
+
+let depthBreathEnabled = false;
+
+// 중간 영상 UI
+const videoFile = document.getElementById('videoFile');
+const videoPlayBtn = document.getElementById('videoPlay');
+const videoPauseBtn = document.getElementById('videoPause');
+const videoLoop = document.getElementById('videoLoop');
+const videoMute = document.getElementById('videoMute');
+const videoScale = document.getElementById('videoScale');
+const videoScaleVal = document.getElementById('videoScaleVal');
+
+/* ---------- 곡선 & 프레네 프레임 ---------- */
+function helixCurve(clockwise=true){
+  const seg=1600, pts=[];
+  const T=Number(turns.value), R=Number(radius.value), H=2.6;
+  for(let i=0;i<=seg;i++){
+    const t=i/seg, ang=(clockwise?+1:-1)*(T*2*Math.PI*t);
+    const x=Math.cos(ang)*R, z=Math.sin(ang)*R, y=1.5+(t-0.5)*H;
+    pts.push(new THREE.Vector3(x,y,z));
+  }
+  return new THREE.CatmullRomCurve3(pts);
+}
+function framesFor(curve, segs){ return curve.computeFrenetFrames(segs, false); }
+
+/* ---------- 가닥 생성: 튜브 / 스피어 / 큐브 / 링 ---------- */
+let leftMesh=null, rightMesh=null;
+
+function makeStrand({clockwise=true, color='#00d1ff', thickness=0.012, shape='tube', layer=1}){
+  const Tcurve = helixCurve(clockwise);
+
+  if(shape==='tube'){
+    const geo=new THREE.TubeGeometry(Tcurve, 1000, thickness, 8, false);
+    const mat=new THREE.MeshStandardMaterial({
+      color:new THREE.Color(color), metalness:0.1, roughness:0.35,
+      emissive:new THREE.Color(color).multiplyScalar(0.2), emissiveIntensity:0.8, transparent:true, opacity:1
+    });
+    const mesh=new THREE.Mesh(geo,mat); mesh.layers.set(layer); return mesh;
+  }
+
+  const count = Number(beadCount.value);
+  const frames = framesFor(Tcurve, count);
+  let baseGeo;
+  if(shape==='sphere'){ baseGeo = new THREE.SphereGeometry(1, 16, 12); }
+  else if(shape==='cube'){ baseGeo = new THREE.BoxGeometry(2,2,2); }
+  else { baseGeo = new THREE.TorusGeometry(1, 0.35, 12, 18); } // ring
+
+  const mat = new THREE.MeshStandardMaterial({
+    color:new THREE.Color(color), metalness:0.1, roughness:0.35,
+    emissive:new THREE.Color(color).multiplyScalar(0.18), emissiveIntensity:0.9, transparent:true, opacity:1
+  });
+
+  const inst = new THREE.InstancedMesh(baseGeo, mat, count);
+  inst.layers.set(layer);
+
+  const s = thickness * (shape==='ring' ? 18 : shape==='cube' ? 16 : 20);
+  const m = new THREE.Matrix4();
+  for(let i=0;i<count;i++){
+    const t = i/(count-1);
+    const pos = Tcurve.getPointAt(t);
+    const T = frames.tangents[i], N = frames.normals[i], B = frames.binormals[i];
+    const mat3 = new THREE.Matrix4().makeBasis(N, B, T);
+    const scale = new THREE.Matrix4().makeScale(s, s, (shape==='ring'? s : s*0.9));
+    const trans = new THREE.Matrix4().makeTranslation(pos.x,pos.y,pos.z);
+    m.copy(trans).multiply(mat3).multiply(scale);
+    inst.setMatrixAt(i, m);
+  }
+  inst.instanceMatrix.needsUpdate=true;
+  return inst;
+}
+function clearGroup(g){ while(g.children.length){ const o=g.children.pop(); o.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); } }
+function rebuildStrands(){
+  clearGroup(leftGroup); clearGroup(rightGroup);
+  leftMesh  = makeStrand({clockwise:true,  color:leftColor.value,  thickness:Number(leftThick.value),  shape:strandShape.value, layer:1});
+  rightMesh = makeStrand({clockwise:false, color:rightColor.value, thickness:Number(rightThick.value), shape:strandShape.value, layer:2});
+  leftGroup.add(leftMesh); rightGroup.add(rightMesh);
+
+  // Ensure initial scales are identity (important if previously breathing adjusted scales)
+  leftGroup.scale.set(1,1,1); rightGroup.scale.set(1,1,1);
+  if(leftMesh) leftMesh.scale.set(1,1,1);
+  if(rightMesh) rightMesh.scale.set(1,1,1);
+}
+rebuildStrands();
+
+/* ---------- 레이어 라우팅(다이콥틱) ---------- */
+function routePerEye(){
+  const xrCam = renderer.xr.getCamera(camera);
+  if (xrCam?.isArrayCamera && xrCam.cameras.length>=2){
+    const L=xrCam.cameras[0], R=xrCam.cameras[1];
+    L.layers.enable(0); L.layers.enable(1); L.layers.disable(2);
+    R.layers.enable(0); R.layers.enable(2); R.layers.disable(1);
+  }
+}
+renderer.xr.addEventListener('sessionstart', routePerEye);
+
+/* ---------- 템포럴 모듈레이션 ---------- */
+function blinkValue(t, freq, duty, phaseDeg){
+  if(freq<=0) return 1;
+  const phase=(phaseDeg||0)*Math.PI/180, period=1/freq;
+  const ph=((t + phase/(2*Math.PI*freq))%period + period)%period;
+  return (ph < duty*period)? 1 : 0;
+}
+function pulseValue(t, freq, phaseDeg){
+  if(freq<=0) return 1;
+  const phase=(phaseDeg||0)*Math.PI/180;
+  return 0.5 + 0.5*Math.sin(2*Math.PI*freq*t + phase);
+}
+function applyPulse(mesh, v){
+  const s = Number(pulseStrength.value);
+  if(!mesh) return;
+  if(mesh.material){
+    mesh.material.opacity = Math.min(1, 0.25 + 0.75*v*s*0.9);
+    if(mesh.material.emissiveIntensity!==undefined) mesh.material.emissiveIntensity = 0.5 + 0.7*v*s*0.6;
+    mesh.material.needsUpdate=true;
+    // Note: mesh.scale is handled elsewhere for radius compensation; here we keep uniform pulse scaling small
+    mesh.scale.multiplyScalar(1.0 + 0.06*(v-0.5)*s);
+  }else if(mesh.isInstancedMesh){
+    mesh.material.opacity = Math.min(1, 0.25 + 0.75*v*s*0.9);
+    if(mesh.material.emissiveIntensity!==undefined) mesh.material.emissiveIntensity = 0.6 + 0.6*v*s*0.6;
+    mesh.material.needsUpdate=true;
+    mesh.scale.multiplyScalar(1.0 + 0.06*(v-0.5)*s);
+  }
+}
+function applyTemporal(mesh, enabled, mode, t, phaseDeg){
+  if(!mesh){ return; }
+  if(!enabled){ if(mesh.material){mesh.material.opacity=1;} mesh.visible=true; return; }
+  if(mode==='blink'){
+    const vis = blinkValue(t, Number(modFreq.value), Number(modDuty.value)/100, phaseDeg) >= 0.5;
+    mesh.visible = vis;
+  }else{
+    const v = pulseValue(t, Number(modFreq.value), phaseDeg);
+    mesh.visible = true; applyPulse(mesh, v);
+  }
+}
+
+/* ---------- 중간 영상 레이어 구현 ---------- */
+let videoElem=null, videoTex=null, videoMesh=null, videoURL=null;
+const videoBaseWidth = 2.8; // 기본 폭 (스케일 1.0 기준)
+function disposeVideo(){
+  if(videoMesh){
+    scene.remove(videoMesh);
+    videoMesh.geometry?.dispose?.();
+    if(videoMesh.material?.map){ videoMesh.material.map.dispose?.(); }
+    videoMesh.material?.dispose?.();
+    videoMesh=null;
+  }
+  if(videoTex){ videoTex.dispose(); videoTex=null; }
+  if(videoElem){
+    try{ videoElem.pause(); }catch{}
+    videoElem.src=''; videoElem.load();
+    videoElem=null;
+  }
+  if(videoURL){ URL.revokeObjectURL(videoURL); videoURL=null; }
+  videoPlayBtn.disabled=true; videoPauseBtn.disabled=true;
+  videoPlayBtn.classList.add('ghost'); videoPauseBtn.classList.add('ghost');
+}
+function createVideoMesh(){
+  const geo = new THREE.PlaneGeometry(1,1);
+  const mat = new THREE.MeshBasicMaterial({ map: videoTex, toneMapped:false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0,1.6,-1.7); // 배경(-2.0)과 헬릭스(최대 -1.5) 사이
+  mesh.frustumCulled=false;
+  return mesh;
+}
+videoFile.addEventListener('change', async (e)=>{
+  const file = e.target.files?.[0];
+  if(!file){ return; }
+  disposeVideo();
+
+  videoElem = document.createElement('video');
+  videoElem.setAttribute('playsinline','');
+  videoElem.setAttribute('webkit-playsinline','');
+  videoElem.preload = 'metadata';
+  videoElem.loop = videoLoop.checked;
+  videoElem.muted = videoMute.checked;
+  videoElem.crossOrigin='anonymous';
+
+  videoURL = URL.createObjectURL(file);
+  videoElem.src = videoURL;
+
+  videoTex = new THREE.VideoTexture(videoElem);
+  videoTex.minFilter = THREE.LinearFilter;
+  videoTex.magFilter = THREE.LinearFilter;
+  videoTex.generateMipmaps = false;
+  videoTex.colorSpace = THREE.SRGBColorSpace;
+
+  videoMesh = createVideoMesh();
+  scene.add(videoMesh);
+
+  // 메타데이터 로드 후 올바른 종횡비로 스케일링
+  const onLoaded = ()=>{
+    const w = videoElem.videoWidth || 1920;
+    const h = videoElem.videoHeight || 1080;
+    const aspect = w / h;
+    // 폭 기준 스케일:
+    const scale = Number(videoScale.value);
+    videoMesh.scale.set(videoBaseWidth*scale, (videoBaseWidth/aspect)*scale, 1);
+    log(`영상 로드됨 (${w}×${h}), aspect=${aspect.toFixed(3)} — 재생 버튼을 눌러 시작하세요.`);
+    videoPlayBtn.disabled=false; videoPauseBtn.disabled=false;
+    videoPlayBtn.classList.remove('ghost'); videoPauseBtn.classList.remove('ghost');
+  };
+  videoElem.onloadedmetadata = onLoaded;
+  try{ await videoElem.load?.(); }catch{}
+  if(videoElem.readyState>=1){ onLoaded(); }
+});
+videoPlayBtn.onclick = async ()=>{
+  try{
+    await videoElem?.play();
+    log('영상 재생 중');
+  }catch(err){ log('재생 실패: 사용자 제스처가 필요하거나 코덱이 지원되지 않습니다.'); }
+};
+videoPauseBtn.onclick = ()=>{ try{ videoElem?.pause(); log('일시정지'); }catch{} };
+videoLoop.addEventListener('change', ()=>{ if(videoElem) videoElem.loop = videoLoop.checked; });
+videoMute.addEventListener('change', ()=>{ if(videoElem) videoElem.muted = videoMute.checked; });
+videoScale.addEventListener('input', ()=>{
+  videoScaleVal.textContent = `${Number(videoScale.value).toFixed(2)}×`;
+  if(videoMesh && videoElem){
+    const w = videoElem.videoWidth || 1920;
+    const h = videoElem.videoHeight || 1080;
+    const aspect = w / h;
+    const scale = Number(videoScale.value);
+    videoMesh.scale.set(videoBaseWidth*scale, (videoBaseWidth/aspect)*scale, 1);
+  }
+});
+
+/* ---------- 애니메이션 루프 ---------- */
+renderer.setAnimationLoop((timeMS)=>{
+  const t=(timeMS||0)/1000;
+
+  // 배경
+  planeMat.uniforms.uTime.value=t;
+
+  // 그룹 흔들림/상승
+  const lS=Number(lRise.value), rS=Number(rRise.value);
+  leftGroup.position.y  = 0.15*Math.sin(t*lS*2.0);
+  rightGroup.position.y = 0.15*Math.sin(t*rS*2.0+0.7);
+  leftGroup.rotation.y  = 0.18*Math.sin(t*0.6);
+  rightGroup.rotation.y = -0.18*Math.sin(t*0.6+0.5);
+
+  // 거리 호흡 처리:
+  // 기본 동작: 전/복귀 루프 (0 -> amp -> 0) (코사인 기반)
+  const applyBreathTo = (group, mesh, amp, freq, t)=>{
+    if(!amp || amp <= 0 || !freq || freq <= 0){
+      // reset positions/scales when disabled or zero
+      group.position.z = 0;
+      group.scale.set(1,1,1);
+      if(mesh) mesh.scale.set(1,1,1);
+      return;
+    }
+    const dz = 0.5*(1 - Math.cos(2*Math.PI*freq*t)) * amp; // 0..amp..0
+    group.position.z = -dz;
+
+    // 반경 확장: 전방 이동시에 반경을 증가시키도록 X/Z 스케일 적용
+    // 확장 비율은 dz/amp에 비례 (최대 +60% 확장) — 자연스러운 느낌
+    const expandMax = 0.6; // 최대 60% 증가
+    const frac = amp > 0 ? (dz / amp) : 0;
+    const scaleXZ = 1 + frac * expandMax; // 1 .. 1+expandMax
+    group.scale.set(scaleXZ, 1, scaleXZ);
+
+    // 가운데 헬릭스의 '두께'는 화면상 고정되길 원하면 인스턴스/메쉬 스케일을 역으로 보정
+    // (그룹의 XZ 스케일과 곱해져 최종 반경 확장만 적용하고 두께는 유지)
+    if(mesh){
+      // 역 보정 (X,Z에 대해서만) — Y는 그대로 둡니다.
+      const inv = (scaleXZ !== 0) ? (1/scaleXZ) : 1;
+      // mesh.scale.set(x,y,z)
+      mesh.scale.set(inv, 1, inv);
+    }
+  };
+
+  if(depthBreathEnabled){
+    if(depthIndependent.checked){
+      // 좌/우 독립
+      const ampL = Number(breathDistL.value);
+      const freqL = Number(breathSpeedL.value);
+      const ampR = Number(breathDistR.value);
+      const freqR = Number(breathSpeedR.value);
+      applyBreathTo(leftGroup, leftMesh, ampL, freqL, t);
+      applyBreathTo(rightGroup, rightMesh, ampR, freqR, t);
+    }else{
+      // 기존 동작: 좌우 함께
+      const amp = Number(breathDist.value);
+      const freq = Number(breathSpeed.value);
+      applyBreathTo(leftGroup, leftMesh, amp, freq, t);
+      applyBreathTo(rightGroup, rightMesh, amp, freq, t);
+    }
+  }else{
+    // 비활성화: 원위치 및 스케일 복구
+    leftGroup.position.z = 0; rightGroup.position.z = 0;
+    leftGroup.scale.set(1,1,1); rightGroup.scale.set(1,1,1);
+    if(leftMesh) leftMesh.scale.set(1,1,1);
+    if(rightMesh) rightMesh.scale.set(1,1,1);
+  }
+
+  // 위상
+  let lPh=Number(phaseL.value), rPh=Number(phaseR.value);
+  if(phaseLink.checked){ rPh = (lPh + Number(phaseOffset.value)) % 360; }
+
+  // 다이콥틱 펄스/깜빡임
+  applyTemporal(leftMesh,  modL.checked, modMode.value, t, lPh);
+  applyTemporal(rightMesh, modR.checked, modMode.value, t, rPh);
+
+  routePerEye();
+  renderer.render(scene, camera);
+});
+
+/* ---------- 핸들러 ---------- */
+enterBtn.onclick=()=>{
+  const btn=document.querySelector('button.webxr-button, .webxr-button, .vr-button, .xr-button'); if(btn) btn.click();
+};
+recenterBtn.onclick=()=>{ camera.position.set(0,1.4,1.6); camera.lookAt(0,1.4,-1.2); };
+
+function updateReadouts(){
+  beadCountVal.textContent=beadCount.value;
+  leftThickVal.textContent=leftThick.value;
+  rightThickVal.textContent=rightThick.value;
+  turnsVal.textContent=turns.value;
+  radiusVal.textContent=radius.value;
+  modFreqVal.textContent=`${Number(modFreq.value).toFixed(1)} Hz`;
+  modDutyVal.textContent=`${modDuty.value}%`;
+  pulseStrengthVal.textContent=`${Number(pulseStrength.value).toFixed(2)}×`;
+  phaseOffsetVal.textContent=`${phaseOffset.value}°`;
+  phaseLVal.textContent=`${phaseL.value}°`;
+  phaseRVal.textContent=`${phaseR.value}°`;
+  breathDistVal.textContent=`${Number(breathDist.value).toFixed(2)} m`;
+  breathSpeedVal.textContent=`${Number(breathSpeed.value).toFixed(2)} Hz`;
+  breathDistLVal.textContent=`${Number(breathDistL.value).toFixed(2)} m`;
+  breathSpeedLVal.textContent=`${Number(breathSpeedL.value).toFixed(2)} Hz`;
+  breathDistRVal.textContent=`${Number(breathDistR.value).toFixed(2)} m`;
+  breathSpeedRVal.textContent=`${Number(breathSpeedR.value).toFixed(2)} Hz`;
+  videoScaleVal.textContent=`${Number(videoScale.value).toFixed(2)}×`;
+}
+['input','change'].forEach(evt=>{
+  [beadCount,leftThick,rightThick,turns,radius,modFreq,modDuty,pulseStrength,phaseOffset,phaseL,phaseR,breathDist,breathSpeed,breathDistL,breathSpeedL,breathDistR,breathSpeedR,videoScale].forEach(el=>el.addEventListener(evt, updateReadouts));
+});
+updateReadouts();
+
+[leftColor,rightColor].forEach(el=>el.addEventListener('input', ()=>{
+  if(leftMesh?.material){ leftMesh.material.color.set(leftColor.value); leftMesh.material.emissive.set(new THREE.Color(leftColor.value).multiplyScalar(0.2)); }
+  if(rightMesh?.material){ rightMesh.material.color.set(rightColor.value); rightMesh.material.emissive.set(new THREE.Color(rightColor.value).multiplyScalar(0.2)); }
+}));
+
+rebuildBtn.onclick=()=>{ rebuildStrands(); };
+strandShape.addEventListener('change', ()=>{ rebuildStrands(); });
+
+// 거리 호흡 토글
+depthBreathBtn.onclick = () => {
+  depthBreathEnabled = !depthBreathEnabled;
+  depthBreathBtn.textContent = `거리 호흡: ${depthBreathEnabled ? 'ON' : 'OFF'}`;
+};
+
+// Depth independent toggle: when toggled off, we keep left/right inputs visible but they won't be applied
+depthIndependent.addEventListener('change', ()=>{
+  // no special visual toggling required; values are read during animation
+});
+
+// Keep UI consistent if radius changes: rebuild to apply new radius when user adjusts radius / turns etc.
+radius.addEventListener('change', ()=>{ rebuildStrands(); });
+turns.addEventListener('change', ()=>{ rebuildStrands(); });
+beadCount.addEventListener('change', ()=>{ if(strandShape.value !== 'tube') rebuildStrands(); });
+
+// If thickness or colors change, update materials directly (we already update colors). If thickness changes, easier to rebuild.
+leftThick.addEventListener('change', ()=>{ rebuildStrands(); });
+rightThick.addEventListener('change', ()=>{ rebuildStrands(); });
+
+// Ensure when user switches between tube and bead types we rebuild
+strandShape.addEventListener('change', ()=>{ rebuildStrands(); });
+
+// Video UI buttons already set up earlier
+
+log('준비 완료: VR 입장 후 [중간 영상 레이어]에서 MP4를 올리고 재생하세요. 새 기능: 거리 호흡을 좌/우 독립으로 설정 가능하며, 전방 이동 시 헬릭스 반경이 함께 증가하도록 보정합니다. 공통 모드도 유지됩니다.');
+</script>
+</body>
+</html>
