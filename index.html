@@ -2,11 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes" />
 <title>다이콥틱 헬릭스 — 거리 호흡 + 중간 영상 레이어(MP4)</title>
 <style>
   html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  /* UI: 화면 끝까지 내려가도록 하고 스크롤 가능하게 변경 */
+  /* UI: 스크롤 가능, 화면 크기에 따라 내부 스크롤 */
   #ui{
     position:fixed;
     left:12px; top:12px;
@@ -30,9 +30,26 @@
   .preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   button,select,input{font:inherit}
   #diag{font-size:12px;color:#ffd18a;margin-top:6px;white-space:pre-line}
-  .ghost{opacity:.5;pointer-events:none}
   .muted{opacity:.55}
   .small{font-size:12px}
+  /* Button styling so disabled/ghost won't appear as solid black and look clickable */
+  button{
+    background:#1f1f1f;
+    color:#fff;
+    border:1px solid rgba(255,255,255,0.06);
+    padding:6px 8px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  button:disabled{
+    opacity:0.38;
+    cursor:default;
+    background:#111;
+    color:#777;
+  }
+  .ghost{opacity:.6} /* non-blocking visual hint */
+  input[type="range"]{accent-color:#6bd; height:26px}
+  .labelVal { min-width:56px; text-align:right; display:inline-block; font-size:13px; color:#cfcfcf; }
 </style>
 </head>
 <body>
@@ -50,7 +67,7 @@
     </select>
     <label style="margin-left:8px">비드 개수</label>
     <input id="beadCount" type="range" min="60" max="1600" step="20" value="600">
-    <span id="beadCountVal">600</span>
+    <span id="beadCountVal" class="labelVal">600</span>
   </div>
 
   <h3>전경(다이콥틱) — 좌안 파란 / 우안 핑크</h3>
@@ -59,19 +76,35 @@
     <label style="margin-left:8px">우안 색</label><input id="rightColor" type="color" value="#ff4dd2">
   </div>
   <div class="row">
-    <label>좌 두께/크기</label><input id="leftThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="leftThickVal">0.012</span>
-    <label style="margin-left:8px">우 두께/크기</label><input id="rightThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="rightThickVal">0.012</span>
+    <label>좌 두께/크기</label><input id="leftThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="leftThickVal" class="labelVal">0.012</span>
+    <label style="margin-left:8px">우 두께/크기</label><input id="rightThick" type="range" min="0.004" max="0.06" step="0.001" value="0.012"><span id="rightThickVal" class="labelVal">0.012</span>
   </div>
 
   <div class="row">
     <label>상승 속도 L</label><input id="lRise" type="range" min="0" max="3" step="0.01" value="1.0">
     <label>상승 속도 R</label><input id="rRise" type="range" min="0" max="3" step="0.01" value="1.0">
-    <label>회전 밀도(턴)</label><input id="turns" type="range" min="1" max="12" step="0.1" value="6.0"><span id="turnsVal">6.0</span>
-    <label>반경</label><input id="radius" type="range" min="0.3" max="1.2" step="0.01" value="0.45"><span id="radiusVal">0.45</span>
+    <label>회전 밀도(턴)</label><input id="turns" type="range" min="1" max="12" step="0.1" value="6.0"><span id="turnsVal" class="labelVal">6.0</span>
+    <!-- 기존 radius(절대 반경) 유지 -->
+    <label>기본 반경</label><input id="radius" type="range" min="0.3" max="1.2" step="0.01" value="0.45"><span id="radiusVal" class="labelVal">0.45</span>
   </div>
 
   <div class="section">
-    <div class="row"><strong>템포럴 모듈레이션(깜빡임/펄스) — 기존 로직</strong></div>
+    <div class="row"><strong>원근(거리 호흡) — 앞부분만 전진(동심원 확장)</strong></div>
+    <div class="row">
+      <label>동심원 확장 배율(프론트 최대)</label>
+      <!-- discrete slider indices map to specific multipliers [1.0, 1.5, 2.5, 3.0, 3.5] -->
+      <input id="radiusMulIdx" type="range" min="0" max="4" step="1" value="0">
+      <span id="radiusMulVal" class="labelVal">1.00×</span>
+      <label style="margin-left:8px">동작 범위</label><input id="breathDist" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistVal" class="labelVal">1.50 m</span>
+      <label style="margin-left:8px">동작 속도</label><input id="breathSpeed" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedVal" class="labelVal">0.25 Hz</span>
+    </div>
+    <div class="row small muted" style="margin-top:6px">
+      <div>radiusMul 선택값: 0→1.0×, 1→1.5×, 2→2.5×, 3→3.0×, 4→3.5×. 비디오 재생과 연동하여 앞부분(front)만 전진/확장합니다.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="row"><strong>템포럴 모듈레이션(깜빡임/펄스)</strong></div>
     <div class="row">
       <label><input type="checkbox" id="modL" checked> 왼눈 적용</label>
       <label><input type="checkbox" id="modR" checked> 오른눈 적용</label>
@@ -80,52 +113,30 @@
         <option value="blink">온/오프 깜빡임</option>
         <option value="pulse" selected>명암+대비 펄스</option>
       </select>
-      <label>주파수</label><input id="modFreq" type="range" min="0" max="15" step="0.1" value="2"><span id="modFreqVal">2.0 Hz</span>
-      <label>듀티</label><input id="modDuty" type="range" min="5" max="95" step="1" value="50"><span id="modDutyVal">50%</span>
+      <label>주파수</label><input id="modFreq" type="range" min="0" max="15" step="0.1" value="2"><span id="modFreqVal" class="labelVal">2.0 Hz</span>
+      <label>듀티</label><input id="modDuty" type="range" min="5" max="95" step="1" value="50"><span id="modDutyVal" class="labelVal">50%</span>
     </div>
     <div class="row">
-      <label>펄스 강도</label><input id="pulseStrength" type="range" min="0.5" max="2.0" step="0.05" value="1.3"><span id="pulseStrengthVal">1.30×</span>
+      <label>펄스 강도</label><input id="pulseStrength" type="range" min="0.5" max="2.0" step="0.05" value="1.3"><span id="pulseStrengthVal" class="labelVal">1.30×</span>
       <label><input type="checkbox" id="phaseLink" checked> 위상 연동</label>
-      <label>위상 오프셋</label><input id="phaseOffset" type="range" min="0" max="180" step="1" value="180"><span id="phaseOffsetVal">180°</span>
+      <label>위상 오프셋</label><input id="phaseOffset" type="range" min="0" max="180" step="1" value="180"><span id="phaseOffsetVal" class="labelVal">180°</span>
     </div>
     <div class="row">
-      <label>개별 위상 L</label><input id="phaseL" type="range" min="0" max="360" step="1" value="0"><span id="phaseLVal">0°</span>
-      <label>개별 위상 R</label><input id="phaseR" type="range" min="0" max="360" step="1" value="180"><span id="phaseRVal">180°</span>
+      <label>개별 위상 L</label><input id="phaseL" type="range" min="0" max="360" step="1" value="0"><span id="phaseLVal" class="labelVal">0°</span>
+      <label>개별 위상 R</label><input id="phaseR" type="range" min="0" max="360" step="1" value="180"><span id="phaseRVal" class="labelVal">180°</span>
     </div>
   </div>
 
-  <!-- 원근(거리 호흡) : 좌/우 시작 버튼 제거, 비디오 플레이에 연동 -->
   <div class="section">
-    <div class="row"><strong>원근(거리 호흡)</strong></div>
-    <div class="row">
-      <button id="depthBreathBtn">거리 호흡: OFF</button>
-      <label style="margin-left:8px"><input type="checkbox" id="depthIndependent"> 독립 조정 (좌/우 개별)</label>
-      <label style="margin-left:8px">동기(공통) 범위</label><input id="breathDist" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistVal">1.50 m</span>
-      <label style="margin-left:8px">동기 속도</label><input id="breathSpeed" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedVal">0.25 Hz</span>
-    </div>
-    <div class="row small muted" style="margin-top:6px">
-      <div style="min-width:440px">이제 좌/우 개별 시작 버튼은 제거되었습니다. 비디오 플레이/일시정지/정지에 헬릭스 재생 상태가 연동됩니다.</div>
-    </div>
-    <div class="row" style="margin-top:6px">
-      <label>좌 범위</label><input id="breathDistL" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistLVal">1.50 m</span>
-      <label style="margin-left:8px">좌 속도</label><input id="breathSpeedL" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedLVal">0.25 Hz</span>
-
-      <label style="margin-left:8px">우 범위</label><input id="breathDistR" type="range" min="0" max="1.5" step="0.05" value="1.5"><span id="breathDistRVal">1.50 m</span>
-      <label style="margin-left:8px">우 속도</label><input id="breathSpeedR" type="range" min="0.05" max="1.0" step="0.05" value="0.25"><span id="breathSpeedRVal">0.25 Hz</span>
-    </div>
-  </div>
-
-  <!-- 중간 영상 레이어(MP4). 영상 재생 버튼과 연동하여 헬릭스 재생/일시정지/정지 -->
-  <div class="section">
-    <div class="row"><strong>중간 영상 레이어 (노/초 파동배경과 헬릭스 사이, z ≈ -1.7)</strong></div>
+    <div class="row"><strong>중간 영상 레이어 (MP4) — 플레이/일시정지/정지 버튼과 헬릭스 연동</strong></div>
     <div class="row">
       <input id="videoFile" type="file" accept="video/mp4" />
-      <button id="videoPlay" class="ghost" disabled>재생</button>
-      <button id="videoPause" class="ghost" disabled>일시정지</button>
-      <button id="videoStop" class="ghost" disabled>정지</button>
+      <button id="videoPlay" disabled class="ghost">재생</button>
+      <button id="videoPause" disabled class="ghost">일시정지</button>
+      <button id="videoStop" disabled class="ghost">정지</button>
       <label><input type="checkbox" id="videoLoop" checked> 루프</label>
       <label><input type="checkbox" id="videoMute" checked> 음소거</label>
-      <label>크기</label><input id="videoScale" type="range" min="0.6" max="2.5" step="0.05" value="1.0"><span id="videoScaleVal">1.00×</span>
+      <label>크기</label><input id="videoScale" type="range" min="0.6" max="2.5" step="0.05" value="1.0"><span id="videoScaleVal" class="labelVal">1.00×</span>
     </div>
   </div>
 
@@ -137,41 +148,45 @@
     </div>
   </div>
 
-  <div id="diag"></div>
+  <div id="diag">준비 중…</div>
 </div>
 
 <script type="module">
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
 
-const diag = document.getElementById('diag'); const log=(m)=>{diag.textContent=m;};
+/* ---------- 진단 로그 ---------- */
+const diag = document.getElementById('diag');
+const log = (m)=>{ diag.textContent = String(m); console.debug(m); };
 
-/* ---------- WebGL / WebXR 기본 ---------- */
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false }); // alpha=false: 확실한 검은 배경
+/* ---------- 렌더러 / 씬 셋업 ---------- */
+// alpha true might cause issues in some VR combos; keep opaque black and set clear color explicitly
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
 renderer.setClearColor(0x000000, 1);
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.xr.enabled = true;
-renderer.localClippingEnabled = true; // 전면 잘라내기(클리핑) 등 위해 활성화
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
+
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 50);
 camera.position.set(0,1.4,1.6);
 scene.add(new THREE.HemisphereLight(0xffffff,0x222233,0.9));
 scene.add(new THREE.DirectionalLight(0xffffff,0.6));
 
 addEventListener('resize', ()=>{
-  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
-/* ---------- 배경: 노/초 파동 ---------- */
-const planeGeo=new THREE.PlaneGeometry(6.5,6.5);
-const planeMat=new THREE.ShaderMaterial({
-  uniforms:{uTime:{value:0},uWarp:{value:1.0},uSpeed:{value:1.1},uDensity:{value:60.0}},
+/* ---------- 배경 파동 ---------- */
+const planeGeo = new THREE.PlaneGeometry(6.5, 6.5);
+const planeMat = new THREE.ShaderMaterial({
+  uniforms:{ uTime:{value:0}, uWarp:{value:1.0}, uSpeed:{value:1.1}, uDensity:{value:60.0} },
   vertexShader:`varying vec2 vUv;void main(){vUv=uv*2.0-1.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
   fragmentShader:`
     precision highp float; varying vec2 vUv;
@@ -188,15 +203,16 @@ const planeMat=new THREE.ShaderMaterial({
       gl_FragColor=vec4(col,1.0);
     }`
 });
-const bgPlane=new THREE.Mesh(planeGeo,planeMat);
-bgPlane.position.set(0,1.6,-2.0); scene.add(bgPlane);
+const bgPlane = new THREE.Mesh(planeGeo, planeMat);
+bgPlane.position.set(0,1.6,-2.0);
+scene.add(bgPlane);
 
 /* ---------- 그룹 ---------- */
 const leftGroup = new THREE.Group();
-const rightGroup= new THREE.Group();
+const rightGroup = new THREE.Group();
 scene.add(leftGroup, rightGroup);
 
-/* ---------- UI 참조 ---------- */
+/* ---------- UI 엘리먼트 ---------- */
 const strandShape = document.getElementById('strandShape');
 const beadCount   = document.getElementById('beadCount');
 const beadCountVal= document.getElementById('beadCountVal');
@@ -204,53 +220,39 @@ const leftColor   = document.getElementById('leftColor');
 const rightColor  = document.getElementById('rightColor');
 const leftThick   = document.getElementById('leftThick');
 const rightThick  = document.getElementById('rightThick');
+const leftThickVal = document.getElementById('leftThickVal');
+const rightThickVal= document.getElementById('rightThickVal');
 const lRise = document.getElementById('lRise');
 const rRise = document.getElementById('rRise');
 const turns = document.getElementById('turns');
-const radius= document.getElementById('radius');
-const turnsVal=document.getElementById('turnsVal');
-const radiusVal=document.getElementById('radiusVal');
+const radius = document.getElementById('radius');
+const turnsVal = document.getElementById('turnsVal');
+const radiusVal = document.getElementById('radiusVal');
 
-const modL=document.getElementById('modL');
-const modR=document.getElementById('modR');
-const modMode=document.getElementById('modMode');
-const modFreq=document.getElementById('modFreq');
-const modDuty=document.getElementById('modDuty');
-const modFreqVal=document.getElementById('modFreqVal');
-const modDutyVal=document.getElementById('modDutyVal');
-const pulseStrength=document.getElementById('pulseStrength');
-const pulseStrengthVal=document.getElementById('pulseStrengthVal');
-const phaseLink=document.getElementById('phaseLink');
-const phaseOffset=document.getElementById('phaseOffset');
-const phaseOffsetVal=document.getElementById('phaseOffsetVal');
-const phaseL=document.getElementById('phaseL');
-const phaseR=document.getElementById('phaseR');
-const phaseLVal=document.getElementById('phaseLVal');
-const phaseRVal=document.getElementById('phaseRVal');
-
-const enterBtn=document.getElementById('enter');
-const rebuildBtn=document.getElementById('rebuild');
-const recenterBtn=document.getElementById('recenter');
-
-// 거리 호흡
-const depthBreathBtn = document.getElementById('depthBreathBtn');
-const depthIndependent = document.getElementById('depthIndependent');
+const radiusMulIdx = document.getElementById('radiusMulIdx');
+const radiusMulVal = document.getElementById('radiusMulVal');
 const breathDist = document.getElementById('breathDist');
 const breathDistVal = document.getElementById('breathDistVal');
 const breathSpeed = document.getElementById('breathSpeed');
 const breathSpeedVal = document.getElementById('breathSpeedVal');
 
-const breathDistL = document.getElementById('breathDistL');
-const breathDistLVal = document.getElementById('breathDistLVal');
-const breathSpeedL = document.getElementById('breathSpeedL');
-const breathSpeedLVal = document.getElementById('breathSpeedLVal');
+const modL = document.getElementById('modL');
+const modR = document.getElementById('modR');
+const modMode = document.getElementById('modMode');
+const modFreq = document.getElementById('modFreq');
+const modDuty = document.getElementById('modDuty');
+const modFreqVal = document.getElementById('modFreqVal');
+const modDutyVal = document.getElementById('modDutyVal');
+const pulseStrength = document.getElementById('pulseStrength');
+const pulseStrengthVal = document.getElementById('pulseStrengthVal');
+const phaseLink = document.getElementById('phaseLink');
+const phaseOffset = document.getElementById('phaseOffset');
+const phaseOffsetVal = document.getElementById('phaseOffsetVal');
+const phaseL = document.getElementById('phaseL');
+const phaseR = document.getElementById('phaseR');
+const phaseLVal = document.getElementById('phaseLVal');
+const phaseRVal = document.getElementById('phaseRVal');
 
-const breathDistR = document.getElementById('breathDistR');
-const breathDistRVal = document.getElementById('breathDistRVal');
-const breathSpeedR = document.getElementById('breathSpeedR');
-const breathSpeedRVal = document.getElementById('breathSpeedRVal');
-
-// 비디오
 const videoFile = document.getElementById('videoFile');
 const videoPlayBtn = document.getElementById('videoPlay');
 const videoPauseBtn = document.getElementById('videoPause');
@@ -260,34 +262,39 @@ const videoMute = document.getElementById('videoMute');
 const videoScale = document.getElementById('videoScale');
 const videoScaleVal = document.getElementById('videoScaleVal');
 
-/* ---------- 헬릭스 생성 유틸 ---------- */
+const enterBtn = document.getElementById('enter');
+const rebuildBtn = document.getElementById('rebuild');
+const recenterBtn = document.getElementById('recenter');
+
+/* ---------- 헬릭스 생성 ---------- */
 function helixCurve(clockwise=true){
-  const seg=1600, pts=[];
-  const T=Number(turns.value), R=Number(radius.value), H=2.6;
+  const seg = 1600, pts = [];
+  const T = Number(turns.value), R = Number(radius.value), H = 2.6;
   for(let i=0;i<=seg;i++){
-    const t=i/seg, ang=(clockwise?+1:-1)*(T*2*Math.PI*t);
-    const x=Math.cos(ang)*R, z=Math.sin(ang)*R, y=1.5+(t-0.5)*H;
+    const t = i/seg;
+    const ang = (clockwise?+1:-1)*(T*2*Math.PI*t);
+    const x = Math.cos(ang)*R, z = Math.sin(ang)*R, y = 1.5 + (t-0.5)*H;
     pts.push(new THREE.Vector3(x,y,z));
   }
   return new THREE.CatmullRomCurve3(pts);
 }
 function framesFor(curve, segs){ return curve.computeFrenetFrames(segs, false); }
 
-let leftMesh=null, rightMesh=null;
-let leftFront=null, rightFront=null; // 앞부분만 물리적으로 전진시키기 위한 별도 복제 메쉬
+let leftMesh = null, rightMesh = null;
+let leftFront = null, rightFront = null; // 앞부분만 이동시키는 복제본
 
 function makeStrand({clockwise=true, color='#00d1ff', thickness=0.012, shape='tube', layer=1}){
   const Tcurve = helixCurve(clockwise);
-
-  if(shape==='tube'){
-    const geo=new THREE.TubeGeometry(Tcurve, 1000, thickness, 8, false);
-    const mat=new THREE.MeshStandardMaterial({
+  if(shape === 'tube'){
+    const geo = new THREE.TubeGeometry(Tcurve, 1000, thickness, 8, false);
+    const mat = new THREE.MeshStandardMaterial({
       color:new THREE.Color(color), metalness:0.1, roughness:0.35,
-      emissive:new THREE.Color(color).multiplyScalar(0.2), emissiveIntensity:0.8, transparent:true, opacity:1,
-      clippingPlanes: [], // front 클리핑을 위해 필요시 설정
-      clipShadows: true
+      emissive:new THREE.Color(color).multiplyScalar(0.18), emissiveIntensity:0.8,
+      transparent:true, opacity:1
     });
-    const mesh=new THREE.Mesh(geo,mat); mesh.layers.set(layer); return mesh;
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.layers.set(layer);
+    return mesh;
   }
 
   const count = Number(beadCount.value);
@@ -295,48 +302,48 @@ function makeStrand({clockwise=true, color='#00d1ff', thickness=0.012, shape='tu
   let baseGeo;
   if(shape==='sphere'){ baseGeo = new THREE.SphereGeometry(1, 16, 12); }
   else if(shape==='cube'){ baseGeo = new THREE.BoxGeometry(2,2,2); }
-  else { baseGeo = new THREE.TorusGeometry(1, 0.35, 12, 18); } // ring
+  else { baseGeo = new THREE.TorusGeometry(1, 0.35, 12, 18); }
 
   const mat = new THREE.MeshStandardMaterial({
     color:new THREE.Color(color), metalness:0.1, roughness:0.35,
-    emissive:new THREE.Color(color).multiplyScalar(0.18), emissiveIntensity:0.9, transparent:true, opacity:1,
-    clippingPlanes: [], clipShadows:true
+    emissive:new THREE.Color(color).multiplyScalar(0.18), emissiveIntensity:0.9, transparent:true, opacity:1
   });
 
   const inst = new THREE.InstancedMesh(baseGeo, mat, count);
   inst.layers.set(layer);
-
   const s = thickness * (shape==='ring' ? 18 : shape==='cube' ? 16 : 20);
   const m = new THREE.Matrix4();
   for(let i=0;i<count;i++){
     const t = i/(count-1);
     const pos = Tcurve.getPointAt(t);
-    const T = frames.tangents[i], N = frames.normals[i], B = frames.binormals[i];
-    const mat3 = new THREE.Matrix4().makeBasis(N, B, T);
+    const Tn = frames.tangents[i], N = frames.normals[i], B = frames.binormals[i];
+    const mat3 = new THREE.Matrix4().makeBasis(N, B, Tn);
     const scale = new THREE.Matrix4().makeScale(s, s, (shape==='ring'? s : s*0.9));
     const trans = new THREE.Matrix4().makeTranslation(pos.x,pos.y,pos.z);
     m.copy(trans).multiply(mat3).multiply(scale);
     inst.setMatrixAt(i, m);
   }
-  inst.instanceMatrix.needsUpdate=true;
+  inst.instanceMatrix.needsUpdate = true;
   return inst;
 }
-function clearGroup(g){ while(g.children.length){ const o=g.children.pop(); o.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); } }
+function clearGroup(g){
+  while(g.children.length){
+    const o = g.children.pop();
+    o.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }});
+  }
+}
 
 function makeFrontCopy(original){
   if(!original) return null;
-  // For Mesh (tube)
   if(original.isMesh){
     const geo = original.geometry.clone();
     const mat = original.material.clone();
     mat.transparent = true;
     mat.opacity = 1.0;
-    // front copy will be rendered with same layer set
     const mesh = new THREE.Mesh(geo, mat);
     mesh.layers.copy(original.layers);
     return mesh;
   }
-  // For InstancedMesh, perform a shallow clone - keep same geometry/material but separate object
   if(original.isInstancedMesh){
     const inst = new THREE.InstancedMesh(original.geometry.clone(), original.material.clone(), original.count);
     inst.instanceMatrix.copy(original.instanceMatrix);
@@ -349,34 +356,36 @@ function makeFrontCopy(original){
 }
 
 function rebuildStrands(){
-  // dispose previous front copies
-  if(leftFront){ leftFront.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); scene.remove(leftFront); leftFront=null; }
-  if(rightFront){ rightFront.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); scene.remove(rightFront); rightFront=null; }
+  // remove previous front copies
+  if(leftFront){ scene.remove(leftFront); leftFront.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); leftFront=null; }
+  if(rightFront){ scene.remove(rightFront); rightFront.traverse(n=>{ if(n.isMesh){ n.geometry?.dispose?.(); n.material?.dispose?.(); }}); rightFront=null; }
 
-  clearGroup(leftGroup); clearGroup(rightGroup);
+  clearGroup(leftGroup);
+  clearGroup(rightGroup);
   leftMesh  = makeStrand({clockwise:true,  color:leftColor.value,  thickness:Number(leftThick.value),  shape:strandShape.value, layer:1});
   rightMesh = makeStrand({clockwise:false, color:rightColor.value, thickness:Number(rightThick.value), shape:strandShape.value, layer:2});
-  leftGroup.add(leftMesh); rightGroup.add(rightMesh);
+  leftGroup.add(leftMesh);
+  rightGroup.add(rightMesh);
 
-  // 앞부분 전진 물리 효과를 위해 복제(front) 생성
+  // create front duplicates for forward effect
   leftFront = makeFrontCopy(leftMesh);
   rightFront = makeFrontCopy(rightMesh);
-  if(leftFront){ leftFront.renderOrder = 1; scene.add(leftFront); leftFront.visible = false; }
-  if(rightFront){ rightFront.renderOrder = 1; scene.add(rightFront); rightFront.visible = false; }
+  if(leftFront){ leftFront.visible = false; scene.add(leftFront); }
+  if(rightFront){ rightFront.visible = false; scene.add(rightFront); }
 
-  // 초기 상태
-  leftGroup.position.set(0,0,0); rightGroup.position.set(0,0,0);
-  leftGroup.scale.set(1,1,1); rightGroup.scale.set(1,1,1);
+  // reset transforms
+  leftGroup.position.set(0,0,0); leftGroup.scale.set(1,1,1);
+  rightGroup.position.set(0,0,0); rightGroup.scale.set(1,1,1);
   if(leftMesh) leftMesh.scale.set(1,1,1);
   if(rightMesh) rightMesh.scale.set(1,1,1);
 }
 rebuildStrands();
 
-/* ---------- 레이어 라우팅(다이콥틱) ---------- */
+/* ---------- 다이콥틱 레이어 라우팅 ---------- */
 function routePerEye(){
   const xrCam = renderer.xr.getCamera(camera);
-  if (xrCam?.isArrayCamera && xrCam.cameras.length>=2){
-    const L=xrCam.cameras[0], R=xrCam.cameras[1];
+  if(xrCam?.isArrayCamera && xrCam.cameras.length>=2){
+    const L = xrCam.cameras[0], R = xrCam.cameras[1];
     L.layers.enable(0); L.layers.enable(1); L.layers.disable(2);
     R.layers.enable(0); R.layers.enable(2); R.layers.disable(1);
   }
@@ -401,19 +410,19 @@ function applyPulse(mesh, v){
   if(mesh.material){
     mesh.material.opacity = Math.min(1, 0.25 + 0.75*v*s*0.9);
     if(mesh.material.emissiveIntensity!==undefined) mesh.material.emissiveIntensity = 0.5 + 0.7*v*s*0.6;
-    mesh.material.needsUpdate=true;
+    mesh.material.needsUpdate = true;
     mesh.scale.multiplyScalar(1.0 + 0.06*(v-0.5)*s);
   }else if(mesh.isInstancedMesh){
     mesh.material.opacity = Math.min(1, 0.25 + 0.75*v*s*0.9);
     if(mesh.material.emissiveIntensity!==undefined) mesh.material.emissiveIntensity = 0.6 + 0.6*v*s*0.6;
-    mesh.material.needsUpdate=true;
+    mesh.material.needsUpdate = true;
     mesh.scale.multiplyScalar(1.0 + 0.06*(v-0.5)*s);
   }
 }
 function applyTemporal(mesh, enabled, mode, t, phaseDeg){
-  if(!mesh){ return; }
-  if(!enabled){ if(mesh.material){mesh.material.opacity=1;} mesh.visible=true; return; }
-  if(mode==='blink'){
+  if(!mesh) return;
+  if(!enabled){ if(mesh.material) mesh.material.opacity=1; mesh.visible=true; return; }
+  if(mode === 'blink'){
     const vis = blinkValue(t, Number(modFreq.value), Number(modDuty.value)/100, phaseDeg) >= 0.5;
     mesh.visible = vis;
   }else{
@@ -422,41 +431,32 @@ function applyTemporal(mesh, enabled, mode, t, phaseDeg){
   }
 }
 
-/* ---------- 비디오 레이어 구현 및 헬릭스 연동 ---------- */
-let videoElem=null, videoTex=null, videoMesh=null, videoURL=null;
+/* ---------- 비디오 레이어 + 헬릭스 연동 ---------- */
+let videoElem = null, videoTex = null, videoMesh = null, videoURL = null;
 const videoBaseWidth = 2.8;
-function disposeVideo(){
-  if(videoMesh){
-    scene.remove(videoMesh);
-    videoMesh.geometry?.dispose?.();
-    if(videoMesh.material?.map){ videoMesh.material.map.dispose?.(); }
-    videoMesh.material?.dispose?.();
-    videoMesh=null;
-  }
-  if(videoTex){ videoTex.dispose(); videoTex=null; }
-  if(videoElem){
-    try{ videoElem.pause(); }catch{}
-    videoElem.src=''; videoElem.load();
-    videoElem=null;
-  }
-  if(videoURL){ URL.revokeObjectURL(videoURL); videoURL=null; }
-  videoPlayBtn.disabled=true; videoPauseBtn.disabled=true; videoStopBtn.disabled=true;
-  videoPlayBtn.classList.add('ghost'); videoPauseBtn.classList.add('ghost'); videoStopBtn.classList.add('ghost');
 
-  // 비디오 stop -> 헬릭스도 정지
+function disposeVideo(){
+  if(videoMesh){ scene.remove(videoMesh); videoMesh.geometry?.dispose?.(); if(videoMesh.material?.map) videoMesh.material.map.dispose?.(); videoMesh.material?.dispose?.(); videoMesh=null; }
+  if(videoTex){ videoTex.dispose(); videoTex=null; }
+  if(videoElem){ try{ videoElem.pause(); }catch{} videoElem.src=''; videoElem.load(); videoElem=null; }
+  if(videoURL){ URL.revokeObjectURL(videoURL); videoURL=null;}
+  videoPlayBtn.disabled = true; videoPauseBtn.disabled = true; videoStopBtn.disabled = true;
+  videoPlayBtn.classList.add('ghost'); videoPauseBtn.classList.add('ghost'); videoStopBtn.classList.add('ghost');
   stopHelix();
 }
+
 function createVideoMesh(){
   const geo = new THREE.PlaneGeometry(1,1);
   const mat = new THREE.MeshBasicMaterial({ map: videoTex, toneMapped:false });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(0,1.6,-1.7);
-  mesh.frustumCulled=false;
+  mesh.frustumCulled = false;
   return mesh;
 }
+
 videoFile.addEventListener('change', async (e)=>{
   const file = e.target.files?.[0];
-  if(!file){ return; }
+  if(!file) return;
   disposeVideo();
 
   videoElem = document.createElement('video');
@@ -465,7 +465,7 @@ videoFile.addEventListener('change', async (e)=>{
   videoElem.preload = 'metadata';
   videoElem.loop = videoLoop.checked;
   videoElem.muted = videoMute.checked;
-  videoElem.crossOrigin='anonymous';
+  videoElem.crossOrigin = 'anonymous';
 
   videoURL = URL.createObjectURL(file);
   videoElem.src = videoURL;
@@ -485,37 +485,36 @@ videoFile.addEventListener('change', async (e)=>{
     const aspect = w / h;
     const scale = Number(videoScale.value);
     videoMesh.scale.set(videoBaseWidth*scale, (videoBaseWidth/aspect)*scale, 1);
-    videoPlayBtn.disabled=false; videoPauseBtn.disabled=false; videoStopBtn.disabled=false;
+    videoPlayBtn.disabled = false; videoPauseBtn.disabled = false; videoStopBtn.disabled = false;
     videoPlayBtn.classList.remove('ghost'); videoPauseBtn.classList.remove('ghost'); videoStopBtn.classList.remove('ghost');
-    log(`영상 로드됨 (${w}×${h}), aspect=${aspect.toFixed(3)} — 재생 버튼으로 시작하세요.`);
-    // 자동 재생 시도 (브라우저에서 실패하면 재생 버튼으로 진행)
-    videoElem.play().then(()=>{
-      onVideoPlay();
-      log('영상 자동 재생 성공 — 헬릭스도 재생합니다.');
-    }).catch(()=>{
-      log('자동 재생 불가 — 재생 버튼을 눌러주세요.');
-    });
+    log(`영상 로드됨 (${w}×${h}) — 재생 버튼으로 실행하세요.`);
+    // attach events
+    bindVideoEvents();
+    // try autoplay (may fail on some browsers)
+    videoElem.play().then(()=>{ onVideoPlay(); log('자동 재생 성공: 헬릭스 동작 시작'); }).catch(()=>{ /* wait for user click */ });
   };
   videoElem.onloadedmetadata = onLoaded;
   try{ await videoElem.load?.(); }catch{}
-  if(videoElem.readyState>=1){ onLoaded(); }
+  if(videoElem.readyState >= 1) onLoaded();
 });
 
-videoPlayBtn.onclick = async ()=>{
+videoPlayBtn.addEventListener('click', async ()=>{
+  if(!videoElem) return;
   try{
-    await videoElem?.play();
+    await videoElem.play();
     onVideoPlay();
-    log('영상 재생 중 — 헬릭스 재생 연동.');
-  }catch(err){ log('재생 실패: 사용자 제스처가 필요하거나 코덱이 지원되지 않습니다.'); }
-};
-videoPauseBtn.onclick = ()=>{
-  try{ videoElem?.pause(); onVideoPause(); log('영상 일시정지 — 헬릭스 정지.'); }catch(err){ log('일시정지 처리 오류'); }
-};
-videoStopBtn.onclick = ()=>{
-  // stop: dispose video and stop helix
+  }catch(err){
+    log('재생 실패: 사용자 제스처 필요 또는 코덱 미지원');
+  }
+});
+videoPauseBtn.addEventListener('click', ()=>{
+  if(!videoElem) return;
+  try{ videoElem.pause(); onVideoPause(); }catch(err){ log('일시정지 실패'); }
+});
+videoStopBtn.addEventListener('click', ()=>{
   disposeVideo();
-  log('영상 정지(제거) — 헬릭스 정지.');
-};
+  log('영상 정지 및 헬릭스 정지');
+});
 videoLoop.addEventListener('change', ()=>{ if(videoElem) videoElem.loop = videoLoop.checked; });
 videoMute.addEventListener('change', ()=>{ if(videoElem) videoElem.muted = videoMute.checked; });
 videoScale.addEventListener('input', ()=>{
@@ -529,22 +528,25 @@ videoScale.addEventListener('input', ()=>{
   }
 });
 
-/* ---------- 헬릭스 재생 제어 (비디오와 연동) ---------- */
-let helixPlaying = false; // 비디오 재생과 연동
-let depthBreathEnabled = false;
+function bindVideoEvents(){
+  if(!videoElem) return;
+  videoElem.onplay = ()=> onVideoPlay();
+  videoElem.onpause = ()=> onVideoPause();
+  videoElem.onended = ()=> { stopHelix(); log('비디오 종료 - 헬릭스 정지'); };
+}
 
+/* ---------- 헬릭스 재생 제어 ---------- */
+let helixPlaying = false;
 function startHelix(){
   helixPlaying = true;
-  depthBreathEnabled = true;
-  // front copy visible and main mesh slightly dim to emphasize front motion
+  // highlight front
   if(leftFront) leftFront.visible = true;
   if(rightFront) rightFront.visible = true;
-  if(leftMesh?.material) leftMesh.material.opacity = 0.55;
-  if(rightMesh?.material) rightMesh.material.opacity = 0.55;
+  if(leftMesh?.material) leftMesh.material.opacity = 0.6;
+  if(rightMesh?.material) rightMesh.material.opacity = 0.6;
 }
 function pauseHelix(){
   helixPlaying = false;
-  // freeze: hide front moving copies & make main fully visible (or keep depending)
   if(leftFront) leftFront.visible = false;
   if(rightFront) rightFront.visible = false;
   if(leftMesh?.material) leftMesh.material.opacity = 1.0;
@@ -552,169 +554,125 @@ function pauseHelix(){
 }
 function stopHelix(){
   helixPlaying = false;
-  depthBreathEnabled = false;
   if(leftFront) leftFront.visible = false;
   if(rightFront) rightFront.visible = false;
   if(leftMesh?.material) leftMesh.material.opacity = 1.0;
   if(rightMesh?.material) rightMesh.material.opacity = 1.0;
 }
 
-/* 비디오 이벤트 헬퍼 */
+/* video/helix callbacks */
 function onVideoPlay(){ startHelix(); }
 function onVideoPause(){ pauseHelix(); }
 
-/* ---------- 애니메이션 루프 (앞부분만 전진하는 물리적 효과 구현) ---------- */
+/* ---------- radius multiplier discrete options ---------- */
+const radiusOptions = [1.0, 1.5, 2.5, 3.0, 3.5];
+function getRadiusMul(){ return radiusOptions[Number(radiusMulIdx.value) || 0]; }
+
+/* ---------- 애니메이션 루프: 앞부분만 전진하는 물리적 효과 ---------- */
 renderer.setAnimationLoop((timeMS)=>{
-  const t=(timeMS||0)/1000;
+  const t = (timeMS||0)/1000;
+  planeMat.uniforms.uTime.value = t;
 
-  // 배경
-  planeMat.uniforms.uTime.value=t;
-
-  // 흔들림/상승(항상 동작하거나 helixPlaying에 따라 조절 가능)
-  const lS=Number(lRise.value), rS=Number(rRise.value);
+  // gentle bob/rotation
+  const lS = Number(lRise.value), rS = Number(rRise.value);
   leftGroup.position.y  = 0.15*Math.sin(t*lS*2.0);
   rightGroup.position.y = 0.15*Math.sin(t*rS*2.0+0.7);
   leftGroup.rotation.y  = 0.18*Math.sin(t*0.6);
   rightGroup.rotation.y = -0.18*Math.sin(t*0.6+0.5);
 
-  // 헬릭스 전진 연출:
-  // - 중심은 고정 (group 위치는 0)
-  // - 앞부분(front copy)만 앞쪽(-z)으로 이동 및 반경 확대
-  // - main mesh는 중심에 그대로 있고 불투명도를 낮춰 front가 돋보이게 함
-  const applyFrontMotion = (group, mesh, front, amp, freq, playing, t)=>{
-    if(!mesh || !front){
-      if(mesh) { mesh.visible = true; mesh.scale.set(1,1,1); }
-      return;
-    }
+  // front-only motion (physical-feel): center fixed, front copy moves forward -z and scales outwards
+  const applyFrontMotion = (mesh, front, amp, freq, playing) => {
+    if(!mesh || !front) return;
     if(!playing || !amp || amp<=0 || !freq || freq<=0){
       front.visible = false;
-      mesh.visible = true;
-      mesh.scale.set(1,1,1);
       front.position.set(0,0,0);
       front.scale.set(1,1,1);
+      mesh.visible = true;
       return;
     }
-    // front 이동: 0 -> amp -> 0 (루프), 주파수 freq
     const dz = 0.5*(1 - Math.cos(2*Math.PI*freq*t)) * amp; // 0..amp..0
-    // front는 원심적으로 확대: scaleXZ = 1 .. 1+expandMax
-    const expandMax = 0.9;
-    const frac = amp>0 ? (dz/amp) : 0;
-    const scaleXZ = 1 + frac * expandMax;
-
-    // main mesh는 중심 고정. (원하시면 main의 XZ 스케일을 일부 보정 가능)
-    mesh.visible = true;
-    mesh.scale.set(1,1,1); // 유지(두께 유지)
-
-    // front: 위치와 스케일 적용 (world 기준으로 -z 방향으로 전진)
+    const mul = getRadiusMul(); // e.g. 1.0..3.5
+    // scaleXZ moves from 1 to mul based on dz fraction
+    const frac = amp > 0 ? dz / amp : 0;
+    const scaleXZ = 1 + frac * (mul - 1.0);
     front.visible = true;
-    front.position.set(0, 0, -dz - 0.05); // 조금 더 앞으로
+    front.position.set(0, 0, -dz - 0.05);
     front.scale.set(scaleXZ, 1, scaleXZ);
-
-    // front의 재질은 반투명/강조 (이미 재질이 clone되어 있음)
-    if(front.material){
-      front.material.opacity = 1.0 - 0.2*(1-frac); // 약간의 투명도 조절
-      front.material.needsUpdate = true;
-    }
+    // main mesh stays at center, unchanged scale so user stays at center of helix spiral
+    mesh.visible = true;
   };
 
-  if(depthBreathEnabled && helixPlaying){
-    if(depthIndependent.checked){
-      applyFrontMotion(leftGroup, leftMesh, leftFront, Number(breathDistL.value), Number(breathSpeedL.value), true, t);
-      applyFrontMotion(rightGroup, rightMesh, rightFront, Number(breathDistR.value), Number(breathSpeedR.value), true, t);
-    }else{
-      const amp = Number(breathDist.value);
-      const freq = Number(breathSpeed.value);
-      applyFrontMotion(leftGroup, leftMesh, leftFront, amp, freq, true, t);
-      applyFrontMotion(rightGroup, rightMesh, rightFront, amp, freq, true, t);
-    }
+  if(helixPlaying){
+    // choose common or independent control? we use common controls only (per user's latest request)
+    const amp = Number(breathDist.value);
+    const freq = Number(breathSpeed.value);
+    applyFrontMotion(leftMesh, leftFront, amp, freq, true);
+    applyFrontMotion(rightMesh, rightFront, amp, freq, true);
   }else{
-    // 정지 상태
-    applyFrontMotion(leftGroup, leftMesh, leftFront, 0, 0, false, t);
-    applyFrontMotion(rightGroup, rightMesh, rightFront, 0, 0, false, t);
+    applyFrontMotion(leftMesh, leftFront, 0, 0, false);
+    applyFrontMotion(rightMesh, rightFront, 0, 0, false);
   }
 
-  // 위상
-  let lPh=Number(phaseL.value), rPh=Number(phaseR.value);
-  if(phaseLink.checked){ rPh = (lPh + Number(phaseOffset.value)) % 360; }
-
-  // 다이콥틱 펄스/깜빡임
-  applyTemporal(leftMesh,  modL.checked, modMode.value, t, lPh);
+  // temporal modulation
+  let lPh = Number(phaseL.value), rPh = Number(phaseR.value);
+  if(phaseLink.checked) rPh = (lPh + Number(phaseOffset.value)) % 360;
+  applyTemporal(leftMesh, modL.checked, modMode.value, t, lPh);
   applyTemporal(rightMesh, modR.checked, modMode.value, t, rPh);
 
   routePerEye();
   renderer.render(scene, camera);
 });
 
-/* ---------- 핸들러 및 UI 업데이트 ---------- */
-enterBtn.onclick=()=>{
-  const btn=document.querySelector('button.webxr-button, .webxr-button, .vr-button, .xr-button'); if(btn) btn.click();
-};
-recenterBtn.onclick=()=>{ camera.position.set(0,1.4,1.6); camera.lookAt(0,1.4,-1.2); };
+/* ---------- 핸들러 / UI 업데이트 ---------- */
+// Enter VR
+enterBtn.onclick = ()=>{ const btn = document.querySelector('button.webxr-button, .webxr-button, .vr-button, .xr-button'); if(btn) btn.click(); };
+// recenter camera
+recenterBtn.onclick = ()=>{ camera.position.set(0,1.4,1.6); camera.lookAt(0,1.4,-1.2); };
 
 function updateReadouts(){
-  beadCountVal.textContent=beadCount.value;
-  leftThickVal.textContent=leftThick.value;
-  rightThickVal.textContent=rightThick.value;
-  turnsVal.textContent=turns.value;
-  radiusVal.textContent=radius.value;
-  modFreqVal.textContent=`${Number(modFreq.value).toFixed(1)} Hz`;
-  modDutyVal.textContent=`${modDuty.value}%`;
-  pulseStrengthVal.textContent=`${Number(pulseStrength.value).toFixed(2)}×`;
-  phaseOffsetVal.textContent=`${phaseOffset.value}°`;
-  phaseLVal.textContent=`${phaseL.value}°`;
-  phaseRVal.textContent=`${phaseR.value}°`;
-  breathDistVal.textContent=`${Number(breathDist.value).toFixed(2)} m`;
-  breathSpeedVal.textContent=`${Number(breathSpeed.value).toFixed(2)} Hz`;
-  breathDistLVal.textContent=`${Number(breathDistL.value).toFixed(2)} m`;
-  breathSpeedLVal.textContent=`${Number(breathSpeedL.value).toFixed(2)} Hz`;
-  breathDistRVal.textContent=`${Number(breathDistR.value).toFixed(2)} m`;
-  breathSpeedRVal.textContent=`${Number(breathSpeedR.value).toFixed(2)} Hz`;
-  videoScaleVal.textContent=`${Number(videoScale.value).toFixed(2)}×`;
+  beadCountVal.textContent = beadCount.value;
+  leftThickVal.textContent = leftThick.value;
+  rightThickVal.textContent = rightThick.value;
+  turnsVal.textContent = turns.value;
+  radiusVal.textContent = radius.value;
+  const mul = getRadiusMul();
+  radiusMulVal.textContent = `${mul.toFixed(2)}×`;
+  breathDistVal.textContent = `${Number(breathDist.value).toFixed(2)} m`;
+  breathSpeedVal.textContent = `${Number(breathSpeed.value).toFixed(2)} Hz`;
+  modFreqVal.textContent = `${Number(modFreq.value).toFixed(1)} Hz`;
+  modDutyVal.textContent = `${modDuty.value}%`;
+  pulseStrengthVal.textContent = `${Number(pulseStrength.value).toFixed(2)}×`;
+  phaseOffsetVal.textContent = `${phaseOffset.value}°`;
+  phaseLVal.textContent = `${phaseL.value}°`;
+  phaseRVal.textContent = `${phaseR.value}°`;
+  videoScaleVal.textContent = `${Number(videoScale.value).toFixed(2)}×`;
 }
 ['input','change'].forEach(evt=>{
-  [beadCount,leftThick,rightThick,turns,radius,modFreq,modDuty,pulseStrength,phaseOffset,phaseL,phaseR,breathDist,breathSpeed,breathDistL,breathSpeedL,breathDistR,breathSpeedR,videoScale].forEach(el=>el.addEventListener(evt, updateReadouts));
+  [beadCount,leftThick,rightThick,turns,radius, radiusMulIdx,breathDist,breathSpeed,modFreq,modDuty,pulseStrength,phaseOffset,phaseL,phaseR,videoScale].forEach(el=>el.addEventListener(evt, updateReadouts));
 });
 updateReadouts();
 
 [leftColor,rightColor].forEach(el=>el.addEventListener('input', ()=>{
-  if(leftMesh?.material){ leftMesh.material.color.set(leftColor.value); leftMesh.material.emissive.set(new THREE.Color(leftColor.value).multiplyScalar(0.2)); }
-  if(rightMesh?.material){ rightMesh.material.color.set(rightColor.value); rightMesh.material.emissive.set(new THREE.Color(rightColor.value).multiplyScalar(0.2)); }
+  if(leftMesh?.material) { leftMesh.material.color.set(leftColor.value); leftMesh.material.emissive.set(new THREE.Color(leftColor.value).multiplyScalar(0.18)); }
+  if(rightMesh?.material) { rightMesh.material.color.set(rightColor.value); rightMesh.material.emissive.set(new THREE.Color(rightColor.value).multiplyScalar(0.18)); }
   if(leftFront?.material) leftFront.material.color.set(leftColor.value);
   if(rightFront?.material) rightFront.material.color.set(rightColor.value);
 }));
 
-rebuildBtn.onclick=()=>{ rebuildStrands(); };
-strandShape.addEventListener('change', ()=>{ rebuildStrands(); });
+rebuildBtn.addEventListener('click', ()=>{ rebuildStrands(); });
 
-// 거리 호흡 토글
-depthBreathBtn.onclick = () => {
-  depthBreathEnabled = !depthBreathEnabled;
-  depthBreathBtn.textContent = `거리 호흡: ${depthBreathEnabled ? 'ON' : 'OFF'}`;
-  log(`거리 호흡 ${depthBreathEnabled ? '시작' : '정지'}. 비디오 재생 상태와 병행됩니다.`);
-};
-
-// 스트랜드 재빌드 트리거
+// rebuild on radius/turns/thickness change
 radius.addEventListener('change', ()=>{ rebuildStrands(); });
 turns.addEventListener('change', ()=>{ rebuildStrands(); });
 beadCount.addEventListener('change', ()=>{ if(strandShape.value !== 'tube') rebuildStrands(); });
 leftThick.addEventListener('change', ()=>{ rebuildStrands(); });
 rightThick.addEventListener('change', ()=>{ rebuildStrands(); });
-videoStopBtn.addEventListener('click', ()=>{ /* handled above */ });
+strandShape.addEventListener('change', ()=>{ rebuildStrands(); });
 
-// 비디오 플레이/일시정지/정지 -> 헬릭스 연동
-// (비디오 이벤트로도 연결해두면 더욱 안정적)
-function bindVideoEvents(){
-  if(!videoElem) return;
-  videoElem.onplay = ()=>{ onVideoPlay(); };
-  videoElem.onpause = ()=>{ onVideoPause(); };
-  videoElem.onended = ()=>{ stopHelix(); };
-}
-const origVideoFileListener = videoFile.onchange;
-videoFile.addEventListener('change', ()=>{ setTimeout(bindVideoEvents, 100); });
+// Ensure video buttons are enabled only when file loaded (handled in videoFile listener)
 
-// 초기 안내
-log('준비 완료: UI가 스크롤 가능해졌습니다. • 비디오 플레이/일시정지/정지 버튼이 헬릭스 재생 상태와 연동됩니다. • VR에서 검은 화면 문제가 발생하는 경우 재진입(Exit/Enter) 후 다시 시도해 보세요.');
-
+/* ---------- 초기 안내 ---------- */
+log('업데이트: • UI 스크롤 가능 • 비디오 버튼 스타일 개선 • 비디오 플레이/일시정지/정지와 헬릭스 동기화 • 앞부분만 전진(동심원 확대) 연출 • 확장 배율 선택(디스크리트 슬라이더) 추가. 영상 파일을 올린 후 재생 버튼을 눌러 헬릭스가 함께 동작하는지 확인해 주세요.');
 </script>
 </body>
 </html>
